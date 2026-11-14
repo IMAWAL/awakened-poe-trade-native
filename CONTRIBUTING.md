@@ -61,6 +61,19 @@ review in the pull request.
 
 ## Releases
 
+For documentation deployments in a new fork, open **Settings > Pages** and
+select **GitHub Actions** under **Build and deployment > Source**. This is a
+one-time repository setting; the workflow's `GITHUB_TOKEN` cannot enable Pages.
+Then run the **Docs** workflow manually from the Actions tab. After changing a
+workflow, start a new run on the updated branch; rerunning an old failed run
+uses its original workflow revision.
+
+AppImage packaging tools are downloaded using fixed GitHub release asset IDs
+and verified against SHA-256 digests in `.github/workflows/native-release.yml`.
+When updating a tool, update both its asset ID and digest from its official
+release metadata and verify the download. Avoid mutable `continuous` download
+URLs paired with fixed hashes.
+
 `native/VERSION` is the release source of truth. Use:
 
 ```text
