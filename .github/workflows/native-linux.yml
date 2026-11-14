@@ -25,10 +25,15 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    container: archlinux:base-devel
+    # Match the release image and package snapshot.
+    container: archlinux:base-devel-20260628.0.549485@sha256:5fb487a262dd7c25a26071b4d67daca47098433090727c23b71618a5cc3e5ecb
     steps:
-      - name: Update package database
-        run: pacman -Syu --noconfirm
+      - name: Use glibc 2.43 build dependencies
+        run: |
+          # Keep native CI on the same package snapshot as the AppImage release.
+          printf 'Server = https://archive.archlinux.org/repos/2026/07/01/$repo/os/$arch\n' > /etc/pacman.d/mirrorlist
+          pacman -Syyuu --noconfirm
+          test "$(getconf GNU_LIBC_VERSION)" = 'glibc 2.43'
 
       - name: Install dependencies
         run: >-
@@ -37,7 +42,7 @@ jobs:
           qt6-base qt6-webengine qt6-svg qt6-imageformats layer-shell-qt
           kglobalaccel kwindowsystem kpackage kconfig
           opencv tesseract tesseract-data-eng tesseract-data-rus
-          nodejs npm yarn curl file patchelf appstream
+          nodejs npm python yarn curl file patchelf appstream
 
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 

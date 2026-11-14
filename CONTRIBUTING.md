@@ -61,6 +61,16 @@ review in the pull request.
 
 ## Releases
 
+Native CI and releases use the **2026-07-01 Arch Linux Archive** package
+snapshot, including glibc 2.43, OpenCV 4.13, and Qt 6.11. Both workflows pin the
+June 28 official Arch container by digest, replace its mirror list, and
+synchronize the entire system to the package snapshot before installing
+dependencies. Do not switch release builds to rolling Arch
+packages: newly rebuilt libraries can require a newer glibc than the supported
+AppImage baseline. Update the image and date in both workflows together and verify the
+complete AppImage, including the Wayland EGL plugin, still passes the glibc
+2.43 check in `package-appimage.sh`.
+
 For documentation deployments in a new fork, open **Settings > Pages** and
 select **GitHub Actions** under **Build and deployment > Source**. This is a
 one-time repository setting; the workflow's `GITHUB_TOKEN` cannot enable Pages.

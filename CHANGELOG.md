@@ -16,6 +16,10 @@ changes remain documented by the upstream project.
 
 ### Fixed
 
+- Pin native CI and release packages to the 2026-07-01 Arch Linux Archive
+  snapshot so rolling OpenCV and other dependencies cannot raise the AppImage's
+  glibc requirement above 2.43. Check the manually bundled Wayland EGL plugin
+  against the same baseline.
 - Submit filter forms when Enter is captured by the native passive number or
   text input handlers, preserving keyboard focus in the game. Added regression
   tests to native CI.

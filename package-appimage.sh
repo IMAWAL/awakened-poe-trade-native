@@ -127,6 +127,26 @@ for library in libgfortran.so.5 libgfortran.so.5.0.0 libquadmath.so.0 libquadmat
     "$APP_DIR/usr/lib/$library"
 done
 
+# linuxdeploy-plugin-qt does not recognize Qt 6's Wayland client-buffer
+# integration category, even when its plugin root is supplied through qmake.
+# Without this plugin the layer-shell surface maps and accepts shortcuts but
+# cannot create a render context, leaving the overlay completely transparent.
+WAYLAND_EGL_SOURCE="$QT_PLUGIN_STAGING/wayland-graphics-integration-client/libqt-plugin-wayland-egl.so"
+WAYLAND_EGL_DIRECTORY="$APP_DIR/usr/plugins/wayland-graphics-integration-client"
+WAYLAND_EGL_PLUGIN="$WAYLAND_EGL_DIRECTORY/libqt-plugin-wayland-egl.so"
+if [[ ! -f "$WAYLAND_EGL_SOURCE" ]]; then
+  echo "error: Qt Wayland EGL client-buffer integration was not found" >&2
+  exit 1
+fi
+install -d "$WAYLAND_EGL_DIRECTORY"
+install -m 0755 "$WAYLAND_EGL_SOURCE" "$WAYLAND_EGL_PLUGIN"
+"$PATCHELF" --set-rpath '$ORIGIN/../../lib' "$WAYLAND_EGL_PLUGIN"
+if LD_LIBRARY_PATH="$APP_DIR/usr/lib" ldd "$WAYLAND_EGL_PLUGIN" | grep -q 'not found'; then
+  echo "error: bundled Qt Wayland EGL plugin has unresolved dependencies" >&2
+  LD_LIBRARY_PATH="$APP_DIR/usr/lib" ldd "$WAYLAND_EGL_PLUGIN" >&2
+  exit 1
+fi
+
 # The current Qt/KDE bundle targets glibc 2.43. Reject a single accidentally
 # newer dependency before producing another AppImage that passes CI but cannot
 # start on the supported rolling-release baseline.
@@ -147,26 +167,6 @@ while IFS= read -r -d '' binary; do
     exit 1
   fi
 done < <(find "$APP_DIR/usr" -type f -print0)
-
-# linuxdeploy-plugin-qt does not recognize Qt 6's Wayland client-buffer
-# integration category, even when its plugin root is supplied through qmake.
-# Without this plugin the layer-shell surface maps and accepts shortcuts but
-# cannot create a render context, leaving the overlay completely transparent.
-WAYLAND_EGL_SOURCE="$QT_PLUGIN_STAGING/wayland-graphics-integration-client/libqt-plugin-wayland-egl.so"
-WAYLAND_EGL_DIRECTORY="$APP_DIR/usr/plugins/wayland-graphics-integration-client"
-WAYLAND_EGL_PLUGIN="$WAYLAND_EGL_DIRECTORY/libqt-plugin-wayland-egl.so"
-if [[ ! -f "$WAYLAND_EGL_SOURCE" ]]; then
-  echo "error: Qt Wayland EGL client-buffer integration was not found" >&2
-  exit 1
-fi
-install -d "$WAYLAND_EGL_DIRECTORY"
-install -m 0755 "$WAYLAND_EGL_SOURCE" "$WAYLAND_EGL_PLUGIN"
-"$PATCHELF" --set-rpath '$ORIGIN/../../lib' "$WAYLAND_EGL_PLUGIN"
-if LD_LIBRARY_PATH="$APP_DIR/usr/lib" ldd "$WAYLAND_EGL_PLUGIN" | grep -q 'not found'; then
-  echo "error: bundled Qt Wayland EGL plugin has unresolved dependencies" >&2
-  LD_LIBRARY_PATH="$APP_DIR/usr/lib" ldd "$WAYLAND_EGL_PLUGIN" >&2
-  exit 1
-fi
 
 if [[ -z "$APPIMAGETOOL" ]]; then
   APPIMAGETOOL="$(command -v appimagetool || true)"
