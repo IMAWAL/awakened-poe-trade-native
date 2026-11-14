@@ -19,6 +19,8 @@
     "clipboard-item-capture": "implemented",
     "game-config-and-log-watchers": "implemented",
     "wayland-layer-shell-overlay": "implemented",
+    "wayland-overlay-monitor-selection": "implemented",
+    "ydotool-daemon-socket-discovery": "implemented",
     "kwin-game-focus-tracking": "implemented",
     "overlay-focus-and-visibility": "implemented",
     "embedded-trade-browser": "implemented",

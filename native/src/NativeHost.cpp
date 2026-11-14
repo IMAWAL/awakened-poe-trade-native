@@ -154,6 +154,13 @@ NativeHost::NativeHost(NativeOptions options, QObject *parent)
             QDesktopServices::openUrl(m_server.appUrl());
         }
     });
+    connect(&m_tray, &AppTray::overlayScreenSelected, this, [this](const QString &name) {
+        if (!m_overlay) return;
+        m_overlay->selectScreen(name);
+        m_overlay->setInteractive(true);
+        sendVisibility(true);
+        sendFocusState(false);
+    });
     connect(&m_gameWindow, &GameWindowTracker::gameActiveChanged,
             this, [this](bool active) {
         if (active && m_options.useLayerShell &&
@@ -188,6 +195,9 @@ bool NativeHost::start()
         m_overlay = new OverlayWindow(m_configStore.dataDirectory(),
                                       m_options.useLayerShell,
                                       &m_logger);
+        m_tray.setOverlayScreenName(m_overlay->selectedScreenName());
+        connect(m_overlay, &OverlayWindow::screenSelected,
+                &m_tray, &AppTray::setOverlayScreenName);
         m_server.setProxyUserAgent(m_overlay->browserUserAgent());
         connect(m_overlay, &OverlayWindow::proxyCookieAvailable,
                 &m_server, &EventServer::importBrowserCookie);

@@ -59,6 +59,28 @@ kpackagetool6 --type=KWin/Script --list | \
 Do not use `--steal-shortcuts` routinely. It exists for controlled diagnostics
 and can replace another application's global binding.
 
+If the log says **Failed to inject item-copy chord: Ctrl + C**, the shortcut
+was received, but `ydotool` could not send the item-copy keys. Check the preceding
+`[InputInjector]` error and the daemon connection with `ydotool debug`. A working
+`ydotoold` daemon is required even when PoE uses Proton's native Wayland driver.
+If the distribution has no service, use the
+[daemon setup helper](linux-dependencies.md#ydotool). Native builds discover
+common user and system daemon socket paths; an explicit `YDOTOOL_SOCKET` is
+always respected. No change to Proton's Wayland setting is required.
+
+## Move the overlay to another monitor
+
+Open the overlay, then drag the **Move overlay** handle at its top-right corner
+onto the destination monitor and release. Alternatively, right-click the tray
+icon and choose **Overlay screen**, then select a monitor. The selected output
+is remembered across restarts. Choose **Follow cursor** to restore automatic
+placement when opening the overlay. If a monitor is disconnected, placement
+falls back to the cursor's screen or the primary screen.
+
+Use the tray's **Show / hide overlay** action if the overlay is inaccessible.
+Wayland layer-shell overlays do not participate in Alt+Tab or Plasma Overview.
+The screen controls keep the overlay passive so PoE retains keyboard focus.
+
 ## Overlay appears below the game
 
 - Confirm the session is Wayland:

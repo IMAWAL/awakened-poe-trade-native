@@ -14,6 +14,7 @@ on:
       - 'ipc/**'
       - 'build-native.sh'
       - 'package-appimage.sh'
+      - 'install-ydotool-service.sh'
       - '.github/workflows/**'
       - 'scripts/**'
   pull_request:
@@ -52,7 +53,7 @@ jobs:
       - name: Validate scripts and metadata
         run: |
           bash -n build-native.sh package-appimage.sh install-native-user.sh
-          bash -n install-kwin-integration.sh install-ocr-data.sh sync-upstream.sh
+          bash -n install-kwin-integration.sh install-ocr-data.sh sync-upstream.sh install-ydotool-service.sh
           python -m py_compile scripts/check-upstream-contract.py scripts/generate-spdx-sbom.py
           appstreamcli validate --no-net native/resources/awakened-poe-trade-native.appdata.xml
 

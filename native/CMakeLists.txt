@@ -43,7 +43,7 @@ add_executable(awakened-poe-trade-native
   src/RuntimePaths.h src/RuntimePaths.cpp
   src/ConfigStore.h src/ConfigStore.cpp
   src/EventServer.h src/EventServer.cpp
-  src/OverlayWindow.h src/OverlayWindow.cpp
+  src/OverlayWindow.h src/OverlayWindow.cpp src/OverlayPlacement.h
   src/ShortcutManager.h src/ShortcutManager.cpp
   src/InputInjector.h src/InputInjector.cpp
   src/InputEventMonitor.h src/InputEventMonitor.cpp

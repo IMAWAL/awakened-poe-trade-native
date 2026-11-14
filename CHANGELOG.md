@@ -5,6 +5,13 @@ changes remain documented by the upstream project.
 
 ## Unreleased
 
+### Added
+
+- A drag handle and tray monitor selector for moving the native Wayland overlay
+  between outputs, with persistent selection and disconnected-screen fallback.
+- A systemd setup helper for hosts without a working `ydotoold` service, using
+  a daemon socket accessible only to the desktop user.
+
 ### Changed
 
 - Merged upstream through `3188208` (application version 3.29.108), including
@@ -16,6 +23,9 @@ changes remain documented by the upstream project.
 
 ### Fixed
 
+- Discover common `ydotoold` socket paths and preserve explicit overrides.
+  Surface daemon errors written to stdout and remove AppImage loader settings
+  when launching host input tools.
 - Pin native CI and release packages to the 2026-07-01 Arch Linux Archive
   snapshot so rolling OpenCV and other dependencies cannot raise the AppImage's
   glibc requirement above 2.43. Check the manually bundled Wayland EGL plugin

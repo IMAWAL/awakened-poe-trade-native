@@ -76,6 +76,30 @@ command -v ydotool
 ydotool --help
 ```
 
+If your package installs `ydotoold` but provides no working service, run the
+repository's setup helper as your desktop user:
+
+```bash
+./install-ydotool-service.sh
+YDOTOOL_SOCKET=/run/awakened-poe-trade-ydotoold/socket ydotool debug
+```
+
+The helper uses sudo to install and start
+`awakened-poe-trade-ydotoold.service`, loads `uinput`, and creates a daemon
+socket accessible only to your user. Preview the unit with
+`./install-ydotool-service.sh --print-unit`. Restart the app afterward; the
+native host discovers this socket automatically. An explicitly configured
+`YDOTOOL_SOCKET` takes precedence, so remove a stale override first.
+
+For an older AppImage without socket discovery, launch it with
+`YDOTOOL_SOCKET=/run/awakened-poe-trade-ydotoold/socket` in its environment.
+Inspect startup failures with:
+
+```bash
+systemctl status awakened-poe-trade-ydotoold.service
+journalctl -u awakened-poe-trade-ydotoold.service -b
+```
+
 ## KWin integration
 
 The AppImage bundles the bridge and loads it for the current KWin session at

@@ -60,6 +60,7 @@ upstream project and remains dependent on its continued contributions.
 ## Highlights
 
 - Native Wayland layer-shell overlay above fullscreen Path of Exile
+- Drag the overlay between monitors or select its screen from the tray menu
 - Price checking with quick and locked modes
 - KDE global shortcuts with editable Ctrl, Alt, or Shift price-check bindings
 - Passive native text and number entry without taking focus from the game
@@ -106,6 +107,10 @@ users install the same bridge once with:
 ```bash
 ./install-kwin-integration.sh
 ```
+
+If your distribution provides no working `ydotoold` service, install `ydotool`
+and run `./install-ydotool-service.sh` from this checkout. See
+[daemon setup](docs/linux-dependencies.md#ydotool) for verification and logs.
 
 ## Default behavior
 

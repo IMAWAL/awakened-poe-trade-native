@@ -7,6 +7,14 @@ namespace AptNative::DesktopLaunch {
 QProcessEnvironment cleanEnvironment(const QString &activationToken)
 {
     QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+    if (environment.contains(QStringLiteral("APPDIR")) ||
+        environment.contains(QStringLiteral("APPIMAGE"))) {
+        const QString original = environment.value(
+            QStringLiteral("APPIMAGE_ORIGINAL_LD_LIBRARY_PATH"));
+        if (original.isEmpty()) environment.remove(QStringLiteral("LD_LIBRARY_PATH"));
+        else environment.insert(QStringLiteral("LD_LIBRARY_PATH"), original);
+        environment.remove(QStringLiteral("LD_PRELOAD"));
+    }
 
     // AppImage and the layer-shell host may override Qt's loader paths. Those
     // settings belong to this process only and can make a system browser or

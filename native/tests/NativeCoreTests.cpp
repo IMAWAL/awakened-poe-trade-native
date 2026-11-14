@@ -6,6 +6,7 @@
 #include "GameLogWatcher.h"
 #include "GameWindowTracker.h"
 #include "InputInjector.h"
+#include "OverlayPlacement.h"
 #include "Logger.h"
 #include "RuntimePaths.h"
 #include "Types.h"
@@ -17,12 +18,17 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QNetworkCookie>
+#include <QScopeGuard>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTcpSocket>
 
 #include <memory>
+#include <cstring>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
 
 using namespace AptNative;
 
@@ -50,6 +56,9 @@ private slots:
     void eventServerImportsOfficialBrowserCookies();
     void desktopLaunchRemovesPrivateAppImageEnvironment();
     void runtimePathsFindBundledKWinBridge();
+    void inputInjectorFindsDaemonSocket();
+    void inputInjectorReportsDaemonErrorsAndCleansEnvironment();
+    void overlaySelectsOutputAndHandlesDisconnects();
 };
 
 void NativeCoreTests::hostConfigUsesSafeDefaults()
@@ -404,6 +413,106 @@ void NativeCoreTests::runtimePathsFindBundledKWinBridge()
                      "kwin/scripts/awakened-poe-trade-native-focus/metadata.json"),
                  binaryDirectory),
              QFileInfo(metadata).canonicalFilePath());
+}
+
+
+void NativeCoreTests::inputInjectorFindsDaemonSocket()
+{
+    QTemporaryDir runtime;
+    QVERIFY(runtime.isValid());
+    QProcessEnvironment environment;
+    environment.insert(QStringLiteral("XDG_RUNTIME_DIR"), runtime.path());
+    const QString socket = runtime.filePath(QStringLiteral(".ydotool_socket"));
+    int fd = ::socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+    QVERIFY(fd >= 0);
+    const auto closeSocket = qScopeGuard([&] { if (fd >= 0) ::close(fd); });
+    sockaddr_un address {};
+    address.sun_family = AF_UNIX;
+    const QByteArray path = socket.toLocal8Bit();
+    QVERIFY(std::size_t(path.size()) < sizeof(address.sun_path));
+    std::memcpy(address.sun_path, path.constData(), std::size_t(path.size()));
+    QVERIFY(::bind(fd, reinterpret_cast<const sockaddr *>(&address), sizeof(address)) == 0);
+    QCOMPARE(InputInjector::findSocket(environment), socket);
+    environment.insert(QStringLiteral("YDOTOOL_SOCKET"), QStringLiteral("/custom/daemon/socket"));
+    QCOMPARE(InputInjector::findSocket(environment), QStringLiteral("/custom/daemon/socket"));
+    environment.remove(QStringLiteral("YDOTOOL_SOCKET"));
+    ::close(fd);
+    fd = -1;
+    QVERIFY(InputInjector::findSocket(environment) != socket);
+    QVERIFY(QFile::remove(socket));
+    QFile regularFile(socket);
+    QVERIFY(regularFile.open(QIODevice::WriteOnly));
+    regularFile.close();
+    QVERIFY(InputInjector::findSocket(environment) != socket);
+}
+
+void NativeCoreTests::inputInjectorReportsDaemonErrorsAndCleansEnvironment()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString program = directory.filePath(QStringLiteral("ydotool"));
+    QFile script(program);
+    QVERIFY(script.open(QIODevice::WriteOnly));
+    script.write("#!/bin/sh\n"
+                 "if [ -n \"$APPDIR$QT_WAYLAND_SHELL_INTEGRATION$LD_LIBRARY_PATH\" ]; then exit 99; fi\n"
+                 "printf 'failed to connect socket: daemon unavailable\\n'\nexit 2\n");
+    script.close();
+    QVERIFY(script.setPermissions(QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+    const QProcessEnvironment before = QProcessEnvironment::systemEnvironment();
+    const QStringList names{QStringLiteral("PATH"), QStringLiteral("APPDIR"),
+        QStringLiteral("QT_WAYLAND_SHELL_INTEGRATION"), QStringLiteral("LD_LIBRARY_PATH"),
+        QStringLiteral("APPIMAGE_ORIGINAL_LD_LIBRARY_PATH")};
+    const auto restore = qScopeGuard([&] {
+        for (const QString &name : names) {
+            const QByteArray key = name.toLocal8Bit();
+            if (before.contains(name)) qputenv(key.constData(), before.value(name).toLocal8Bit());
+            else qunsetenv(key.constData());
+        }
+    });
+    qputenv("PATH", (directory.path() + QLatin1Char(':') + before.value(QStringLiteral("PATH"))).toLocal8Bit());
+    qputenv("APPDIR", QByteArrayLiteral("/tmp/fake-appdir"));
+    qputenv("QT_WAYLAND_SHELL_INTEGRATION", QByteArrayLiteral("layer-shell"));
+    qputenv("LD_LIBRARY_PATH", QByteArrayLiteral("/tmp/fake-appdir/usr/lib"));
+    qunsetenv("APPIMAGE_ORIGINAL_LD_LIBRARY_PATH");
+    Logger logger;
+    InputInjector injector(&logger);
+    bool complete = false;
+    bool success = true;
+    injector.sendChord(QStringLiteral("Ctrl + C"), {}, [&](bool ok) {
+        complete = true;
+        success = ok;
+    });
+    QTRY_VERIFY_WITH_TIMEOUT(complete, 3000);
+    QVERIFY(!success);
+    QVERIFY(logger.history().contains(QStringLiteral("daemon unavailable")));
+    QVERIFY(logger.history().contains(QStringLiteral("exit 2")));
+    QVERIFY(logger.history().contains(QStringLiteral("ydotool debug")));
+    qputenv("APPIMAGE_ORIGINAL_LD_LIBRARY_PATH", QByteArrayLiteral("/usr/local/lib"));
+    QCOMPARE(DesktopLaunch::cleanEnvironment().value(QStringLiteral("LD_LIBRARY_PATH")),
+             QStringLiteral("/usr/local/lib"));
+    qunsetenv("APPIMAGE_ORIGINAL_LD_LIBRARY_PATH");
+    QVERIFY(script.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    script.write("#!/bin/sh\nexit 0\n");
+    script.close();
+    complete = false;
+    injector.sendChord(QStringLiteral("Ctrl + C"), {}, [&](bool ok) {
+        complete = true;
+        success = ok;
+    });
+    QTRY_VERIFY_WITH_TIMEOUT(complete, 3000);
+    QVERIFY(success);
+}
+
+void NativeCoreTests::overlaySelectsOutputAndHandlesDisconnects()
+{
+    const QList<OverlayOutput> outputs{
+        {QStringLiteral("DP-1"), QRect(-1920, 0, 1920, 1080)},
+        {QStringLiteral("HDMI-1"), QRect(0, 0, 2560, 1440)}};
+    QCOMPARE(overlayOutputIndex(outputs, {}, QPoint(-500, 100), 1), qsizetype(0));
+    QCOMPARE(overlayOutputIndex(outputs, QStringLiteral("HDMI-1"), QPoint(-500, 100), 1), qsizetype(1));
+    QCOMPARE(overlayOutputIndex(outputs, QStringLiteral("disconnected"), QPoint(-500, 100), 1), qsizetype(0));
+    QCOMPARE(overlayOutputIndex(outputs, QStringLiteral("disconnected"), QPoint(9999, 9999), 1), qsizetype(1));
+    QCOMPARE(overlayOutputIndex({}, QStringLiteral("DP-1"), {}, 0), qsizetype(-1));
 }
 
 QTEST_GUILESS_MAIN(NativeCoreTests)

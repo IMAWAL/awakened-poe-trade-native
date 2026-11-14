@@ -1,4 +1,5 @@
 #include "OverlayWindow.h"
+#include "OverlayPlacement.h"
 
 #include "DesktopLaunch.h"
 #include "Logger.h"
@@ -13,6 +14,9 @@
 #include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QRegion>
+#include <QMouseEvent>
+#include <QPushButton>
+#include <QSettings>
 #include <QScreen>
 #include <QStandardPaths>
 #include <QTimer>
@@ -74,8 +78,24 @@ OverlayWindow::OverlayWindow(QString profilePath,
       m_view(new OverlayWebView(this)),
       m_browserView(new OverlayWebView(this)),
       m_logger(logger),
-      m_useLayerShell(useLayerShell)
+      m_useLayerShell(useLayerShell),
+      m_moveHandle(new QPushButton(QStringLiteral("Move overlay"), this)),
+      m_settingsPath(QDir(profilePath).filePath(QStringLiteral("native-overlay.ini")))
 {
+    m_selectedScreenName = QSettings(m_settingsPath, QSettings::IniFormat)
+        .value(QStringLiteral("screen")).toString();
+    m_moveHandle->setToolTip(QStringLiteral(
+        "Drag to another monitor. You can also choose a screen from the tray menu."));
+    m_moveHandle->setCursor(Qt::SizeAllCursor);
+    m_moveHandle->setStyleSheet(QStringLiteral(
+        "QPushButton { background: #20252e; color: white; padding: 6px 12px; "
+        "border: 1px solid #687080; border-radius: 4px; }"));
+    m_moveHandle->installEventFilter(this);
+    m_moveHandle->hide();
+    connect(qGuiApp, &QGuiApplication::screenAdded, this, [this] { configureLayerShell(); });
+    connect(qGuiApp, &QGuiApplication::screenRemoved, this, [this] {
+        QTimer::singleShot(0, this, [this] { configureLayerShell(); });
+    });
     setObjectName(QStringLiteral("awakened-native-overlay"));
     setWindowTitle(QStringLiteral("Awakened PoE Trade Native"));
     // The fallback remains a normal window because Plasma unmaps unparented
@@ -184,15 +204,23 @@ OverlayWindow::OverlayWindow(QString profilePath,
 
 void OverlayWindow::configureLayerShell()
 {
+    const QList<QScreen *> screens = QGuiApplication::screens();
+    QList<OverlayOutput> outputs;
+    for (QScreen *candidate : screens) outputs.append({candidate->name(), candidate->geometry()});
+    const qsizetype index = overlayOutputIndex(outputs, m_selectedScreenName,
+        desktopCursorPosition(), screens.indexOf(QGuiApplication::primaryScreen()));
+    if (index < 0) return;
+    QScreen *screen = screens[index];
+    const bool remap = isVisible() && m_outputScreen != screen;
+    // The output is part of the layer-surface role. Unmap before switching it.
+    if (remap) hide();
+    m_outputScreen = screen;
     if (!m_useLayerShell) {
-        QScreen *screen = QGuiApplication::screenAt(QCursor::pos());
-        if (!screen) screen = QGuiApplication::primaryScreen();
-        if (screen) setGeometry(screen->geometry());
+        if (windowHandle()) windowHandle()->setScreen(screen);
+        setGeometry(screen->geometry());
+        if (remap) show();
         return;
     }
-
-    QScreen *screen = QGuiApplication::screenAt(QCursor::pos());
-    if (!screen) screen = QGuiApplication::primaryScreen();
     if (screen) setGeometry(screen->geometry());
 
     if (m_layerWindow) {
@@ -201,6 +229,7 @@ void OverlayWindow::configureLayerShell()
             m_layerWindow->setScreen(screen);
             m_layerWindow->setDesiredSize(screen->geometry().size());
         }
+        if (remap) show();
         return;
     }
 
@@ -233,6 +262,57 @@ void OverlayWindow::configureLayerShell()
     // keyboard focus here makes Plasma reveal its panels/taskbar.
     m_layerWindow->setKeyboardInteractivity(
         LayerShellQt::Window::KeyboardInteractivityNone);
+    m_layerWindow->setCloseOnDismissed(false);
+    if (remap) show();
+}
+
+QPoint OverlayWindow::desktopCursorPosition() const
+{
+    return m_hasCursorPosition ? m_cursorPosition : QCursor::pos();
+}
+
+QString OverlayWindow::selectedScreenName() const
+{
+    return m_selectedScreenName;
+}
+
+void OverlayWindow::selectScreen(const QString &name)
+{
+    m_selectedScreenName = name;
+    QSettings(m_settingsPath, QSettings::IniFormat).setValue(QStringLiteral("screen"), name);
+    m_trackTimer.stop();
+    configureLayerShell();
+    emit screenSelected(name);
+}
+
+bool OverlayWindow::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == m_moveHandle) {
+        if (event->type() == QEvent::MouseButtonPress &&
+            static_cast<QMouseEvent *>(event)->button() == Qt::LeftButton) {
+            m_draggingScreen = true;
+        } else if (event->type() == QEvent::MouseButtonRelease &&
+                   static_cast<QMouseEvent *>(event)->button() == Qt::LeftButton && m_draggingScreen) {
+            m_draggingScreen = false;
+            if (QScreen *target = QGuiApplication::screenAt(desktopCursorPosition())) {
+                selectScreen(target->name());
+            }
+        }
+    }
+    return QWidget::eventFilter(watched, event);
+}
+
+void OverlayWindow::positionMoveHandle()
+{
+    m_moveHandle->adjustSize();
+    m_moveHandle->move(qMax(0, width() - m_moveHandle->width() - 12), 12);
+    m_moveHandle->raise();
+}
+
+void OverlayWindow::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);
+    positionMoveHandle();
 }
 
 void OverlayWindow::load(const QUrl &url)
@@ -272,6 +352,9 @@ void OverlayWindow::setInteractive(bool interactive)
 {
     if (m_interactive == interactive) return;
     m_interactive = interactive;
+    if (!interactive) m_draggingScreen = false;
+    m_moveHandle->setVisible(interactive && m_uiVisible);
+    positionMoveHandle();
     m_logger->write(QStringLiteral("debug [Overlay] Interactive=%1 layerShell=%2")
         .arg(interactive ? QStringLiteral("true") : QStringLiteral("false"),
              m_useLayerShell ? QStringLiteral("true") : QStringLiteral("false")));
@@ -331,6 +414,7 @@ void OverlayWindow::checkUiVisibility()
 
 void OverlayWindow::setUiVisible(bool visible)
 {
+    m_moveHandle->setVisible(visible && m_interactive);
     if (m_uiVisible == visible) return;
     m_uiVisible = visible;
     emit visibilityRequested(visible);
@@ -368,6 +452,7 @@ void OverlayWindow::syncEmbeddedBrowser()
         m_browserView->setGeometry(geometry);
         m_browserView->show();
         m_browserView->raise();
+        positionMoveHandle();
         m_browserView->setFocus(Qt::OtherFocusReason);
     });
 }

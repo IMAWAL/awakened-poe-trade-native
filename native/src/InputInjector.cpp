@@ -1,6 +1,7 @@
 #include "InputInjector.h"
 
 #include "Logger.h"
+#include "DesktopLaunch.h"
 
 #include <QHash>
 #include <QProcess>
@@ -8,6 +9,13 @@
 #include <QSet>
 #include <QStandardPaths>
 #include <QTimer>
+
+#include <sys/stat.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
+#include <cstring>
+#include <utility>
 
 namespace AptNative {
 
@@ -23,6 +31,39 @@ InputInjector::InputInjector(Logger *logger, QObject *parent)
 bool InputInjector::isAvailable() const
 {
     return !m_ydotool.isEmpty();
+}
+
+QString InputInjector::findSocket(const QProcessEnvironment &environment)
+{
+    const QString explicitSocket = environment.value(QStringLiteral("YDOTOOL_SOCKET"));
+    if (!explicitSocket.isEmpty()) return explicitSocket;
+    QStringList candidates;
+    const QString runtime = environment.value(QStringLiteral("XDG_RUNTIME_DIR"));
+    if (!runtime.isEmpty()) {
+        candidates << runtime + QStringLiteral("/.ydotool_socket")
+                   << runtime + QStringLiteral("/ydotoold/socket")
+                   << runtime + QStringLiteral("/ydotool/socket");
+    }
+    candidates << QStringLiteral("/run/awakened-poe-trade-ydotoold/socket")
+               << QStringLiteral("/run/ydotoold/socket")
+               << QStringLiteral("/tmp/.ydotool_socket");
+    for (const QString &candidate : std::as_const(candidates)) {
+        const QByteArray path = candidate.toLocal8Bit();
+        struct stat status {};
+        if (::stat(path.constData(), &status) != 0 || !S_ISSOCK(status.st_mode) ||
+            ::access(path.constData(), W_OK) != 0) continue;
+        sockaddr_un address {};
+        address.sun_family = AF_UNIX;
+        if (std::size_t(path.size()) >= sizeof(address.sun_path)) continue;
+        std::memcpy(address.sun_path, path.constData(), std::size_t(path.size()));
+        const int fd = ::socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
+        if (fd < 0) continue;
+        // Connect without sending an event; ignore leftover sockets from dead daemons.
+        const bool ready = ::connect(fd, reinterpret_cast<const sockaddr *>(&address), sizeof(address)) == 0;
+        ::close(fd);
+        if (ready) return candidate;
+    }
+    return {};
 }
 
 QStringList InputInjector::shortcutTokens(const QString &shortcut)
@@ -261,6 +302,10 @@ void InputInjector::runCurrentCommand()
 
     const Command command = job.commands.at(job.index++);
     auto *process = new QProcess(this);
+    QProcessEnvironment environment = DesktopLaunch::cleanEnvironment();
+    const QString socket = findSocket(environment);
+    if (!socket.isEmpty()) environment.insert(QStringLiteral("YDOTOOL_SOCKET"), socket);
+    process->setProcessEnvironment(environment);
     auto *timeout = new QTimer(process);
     timeout->setSingleShot(true);
 
@@ -272,7 +317,7 @@ void InputInjector::runCurrentCommand()
             [this, process, timeout, command](QProcess::ProcessError error) {
         if (!m_jobs.isEmpty()) m_jobs.head().success = false;
         m_logger->write(QStringLiteral("error [InputInjector] ydotool process error: %1")
-            .arg(static_cast<int>(error)));
+            .arg(process->errorString()));
         if (error == QProcess::FailedToStart && !process->property("aptHandled").toBool()) {
             process->setProperty("aptHandled", true);
             timeout->stop();
@@ -287,9 +332,15 @@ void InputInjector::runCurrentCommand()
         timeout->stop();
         if (status != QProcess::NormalExit || exitCode != 0) {
             if (!m_jobs.isEmpty()) m_jobs.head().success = false;
-            const QString error = QString::fromUtf8(process->readAllStandardError()).trimmed();
-            m_logger->write(QStringLiteral("error [InputInjector] ydotool failed: %1")
-                .arg(error.isEmpty() ? QString::number(exitCode) : error));
+            QString error = QString::fromUtf8(process->readAllStandardError()).trimmed();
+            // ydotool reports daemon connection and permission failures on stdout.
+            if (error.isEmpty()) error = QString::fromUtf8(process->readAllStandardOutput()).trimmed();
+            m_logger->write(QStringLiteral("error [InputInjector] ydotool failed (exit %1): %2")
+                .arg(exitCode).arg(error));
+            m_logger->write(QStringLiteral(
+                "error [InputInjector] Verify ydotoold is running and YDOTOOL_SOCKET "
+                "points to its socket with permission for your user. Run 'ydotool debug' "
+                "in a terminal to check the connection without sending keys."));
         }
         process->deleteLater();
         QTimer::singleShot(command.delayAfterMs, this, &InputInjector::runCurrentCommand);

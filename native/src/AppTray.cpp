@@ -7,6 +7,7 @@
 #include <QDesktopServices>
 #include <QIcon>
 #include <QMenu>
+#include <QScreen>
 #include <QStandardPaths>
 #include <QStyle>
 #include <QSystemTrayIcon>
@@ -45,11 +46,33 @@ bool openConfigDirectory(const QString &directory)
 AppTray::AppTray(QObject *parent) : QObject(parent), m_tray(new QSystemTrayIcon(this))
 {
     auto *menu = new QMenu;
+    auto *toggle = menu->addAction(QStringLiteral("Show / hide overlay"));
+    auto *screens = menu->addMenu(QStringLiteral("Overlay screen"));
     auto *settings = menu->addAction(QStringLiteral("Settings/League"));
     auto *browser = menu->addAction(QStringLiteral("Open in Browser"));
     menu->addSeparator();
     auto *configFolder = menu->addAction(QStringLiteral("Open config folder"));
     auto *quit = menu->addAction(QStringLiteral("Quit"));
+
+    connect(toggle, &QAction::triggered, this, &AppTray::toggleOverlay);
+    connect(screens, &QMenu::aboutToShow, this, [this, screens] {
+        screens->clear();
+        auto *automatic = screens->addAction(QStringLiteral("Follow cursor"));
+        automatic->setCheckable(true);
+        automatic->setChecked(m_overlayScreenName.isEmpty());
+        connect(automatic, &QAction::triggered, this, [this] {
+            emit overlayScreenSelected({});
+        });
+        for (QScreen *screen : QGuiApplication::screens()) {
+            const QString name = screen->name();
+            auto *action = screens->addAction(name);
+            action->setCheckable(true);
+            action->setChecked(name == m_overlayScreenName);
+            connect(action, &QAction::triggered, this, [this, name] {
+                emit overlayScreenSelected(name);
+            });
+        }
+    });
 
     connect(settings, &QAction::triggered, this, [this, menu] {
         menu->close();
@@ -104,6 +127,11 @@ void AppTray::setOverlayKey(const QString &overlayKey)
 void AppTray::setDataDirectory(const QString &dataDirectory)
 {
     m_dataDirectory = dataDirectory;
+}
+
+void AppTray::setOverlayScreenName(const QString &name)
+{
+    m_overlayScreenName = name;
 }
 
 } // namespace AptNative

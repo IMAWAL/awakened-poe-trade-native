@@ -2,6 +2,7 @@
 
 #include <QList>
 #include <QObject>
+#include <QProcessEnvironment>
 #include <QQueue>
 #include <QString>
 #include <QStringList>
@@ -31,6 +32,7 @@ public:
 
     static QStringList shortcutTokens(const QString &shortcut);
     static int linuxKeyCode(const QString &key);
+    static QString findSocket(const QProcessEnvironment &environment);
 
 private:
     struct Command {
