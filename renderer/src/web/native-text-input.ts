@@ -84,9 +84,11 @@ export function installNativeTextInputCapture () {
       if (input instanceof HTMLTextAreaElement) {
         replaceSelection(input, '\n')
       } else {
-        input.dispatchEvent(new Event('change', { bubbles: true }))
-        input.blur()
+        const control = input
+        control.dispatchEvent(new Event('change', { bubbles: true }))
+        control.blur()
         cancel()
+        control.form?.requestSubmit()
       }
     } else if (key === 'Tab') {
       const controls = Array.from(document.querySelectorAll<TextControl>(

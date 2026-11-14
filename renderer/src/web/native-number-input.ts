@@ -26,8 +26,10 @@ export function installNativeNumberInputCapture () {
       return
     }
     if (event.key === 'Enter') {
-      input.dispatchEvent(new Event('change', { bubbles: true }))
+      const control = input
+      control.dispatchEvent(new Event('change', { bubbles: true }))
       finish()
+      control.form?.requestSubmit()
       return
     }
     if (event.key === 'Delete') {

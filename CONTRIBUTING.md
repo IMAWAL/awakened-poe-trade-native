@@ -34,6 +34,7 @@ Required local checks:
 python scripts/check-upstream-contract.py --require-complete
 cd renderer
 npm ci
+npm run test:native-input
 npm run lint
 npm run build
 cd ..

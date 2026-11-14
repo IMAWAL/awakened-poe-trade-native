@@ -37,12 +37,10 @@ if [[ "${SKIP_RENDERER_BUILD:-0}" != "1" ]]; then
   if [[ -f yarn.lock ]] && command -v yarn >/dev/null 2>&1; then
     yarn install --frozen-lockfile
     echo "[2/3] Building the existing Vue renderer"
-    yarn make-index-files
     yarn build
   elif [[ -f package-lock.json ]] && command -v npm >/dev/null 2>&1; then
     npm ci
     echo "[2/3] Building the existing Vue renderer"
-    npm run make-index-files
     npm run build
   else
     echo "error: no supported package manager matching the renderer lockfile was found" >&2

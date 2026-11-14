@@ -3,6 +3,23 @@
 All notable native-port changes are documented here. Shared Awakened PoE Trade
 changes remain documented by the upstream project.
 
+## Unreleased
+
+### Changed
+
+- Merged upstream through `3188208` (application version 3.29.108), including
+  current item data, Chart and Mercenary Warrant support, parser improvements,
+  and trade filters. Replaced the earlier native-fork Chart implementation
+  with upstream's implementation and removed duplicate Chart data.
+- Generate renderer data indexes through the upstream Vite plugin during
+  native builds.
+
+### Fixed
+
+- Submit filter forms when Enter is captured by the native passive number or
+  text input handlers, preserving keyboard focus in the game. Added regression
+  tests to native CI.
+
 ## 3.29.102-native.2
 
 ### Fixed

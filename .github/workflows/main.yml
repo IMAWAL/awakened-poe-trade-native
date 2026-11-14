@@ -11,8 +11,6 @@ jobs:
     - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
     - run: npm ci
       working-directory: ./renderer
-    - run: npm run make-index-files
-      working-directory: ./renderer
     - run: npm run lint
       working-directory: ./renderer
     - run: npm run build

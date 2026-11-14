@@ -57,6 +57,10 @@ jobs:
       - name: Run native tests
         run: ctest --test-dir native/build --output-on-failure
 
+      - name: Test passive renderer input
+        working-directory: renderer
+        run: npm run test:native-input
+
       - name: Lint renderer
         working-directory: renderer
         run: npm run lint
